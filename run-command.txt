@@ -1,0 +1,9 @@
+cd to each directory
+
+backend: npm run dev
+mobile: npx expo start
+ai: python main.py
+
+palm-mobile-backend
+palm-mobile
+python-inference-service

@@ -1,0 +1,809 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  Modal,
+  Switch,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Svg, Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
+import { useAuth } from "../contexts/AuthContext";
+
+// Define types for our data
+interface Tree {
+  _id?: string;
+  id?: number;
+  x: number;
+  y: number;
+  status: 'healthy' | 'sick';
+  description: string;
+  timestamp: string;
+}
+
+interface TreeHistory {
+  _id?: string;
+  id?: number;
+  treeId: string | number;
+  status: 'healthy' | 'sick';
+  description: string;
+  timestamp: string;
+}
+
+// Service function to handle API calls
+const API_URL = 'http://localhost:3000/api';
+
+const farmMappingService = {
+  // Get all trees
+  fetchTrees: async (): Promise<Tree[]> => {
+    try {
+      const response = await fetch(`${API_URL}/trees`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching trees:', error);
+      throw error;
+    }
+  },
+
+  // Get tree history
+  fetchTreeHistory: async (treeId: string | number): Promise<TreeHistory[]> => {
+    try {
+      const response = await fetch(`${API_URL}/trees/${treeId}/history`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching tree history:', error);
+      throw error;
+    }
+  },
+
+  // Add new tree
+  addTree: async (tree: Tree): Promise<Tree> => {
+    try {
+      const response = await fetch(`${API_URL}/trees`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tree),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error adding tree:', error);
+      throw error;
+    }
+  },
+
+  // Update tree
+  updateTree: async (treeId: string | number, treeData: Partial<Tree>): Promise<Tree> => {
+    try {
+      const response = await fetch(`${API_URL}/trees/${treeId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(treeData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error updating tree:', error);
+      throw error;
+    }
+  },
+
+  // Delete tree
+  deleteTree: async (treeId: string | number): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_URL}/trees/${treeId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting tree:', error);
+      throw error;
+    }
+  }
+};
+
+// Mock data for trees
+const initialTrees: Tree[] = [
+  { id: 1, x: 50, y: 50, status: 'healthy', description: 'Good growth', timestamp: new Date().toISOString() },
+  { id: 2, x: 150, y: 100, status: 'sick', description: 'Yellow leaves', timestamp: new Date().toISOString() },
+  { id: 3, x: 250, y: 170, status: 'healthy', description: 'Recently planted', timestamp: new Date().toISOString() },
+  { id: 4, x: 100, y: 200, status: 'sick', description: 'Fungal infection', timestamp: new Date().toISOString() },
+  { id: 5, x: 300, y: 80, status: 'healthy', description: 'Good yield', timestamp: new Date().toISOString() },
+];
+
+const API_URL = "http://localhost:3000/api";
+
+export default function FarmMappingScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [trees, setTrees] = useState<Tree[]>(initialTrees);
+  const [selectedTree, setSelectedTree] = useState<Tree | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [addMode, setAddMode] = useState(false);
+  const [newTreeCoords, setNewTreeCoords] = useState({ x: 0, y: 0 });
+  const [newDescription, setNewDescription] = useState("");
+  const [isHealthy, setIsHealthy] = useState(true);
+  const [treeHistory, setTreeHistory] = useState<TreeHistory[]>([]);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const graphRef = useRef(null);
+
+  // Fetch all trees on component mount
+  useEffect(() => {
+    fetchTrees();
+  }, []);
+
+  const fetchTrees = async () => {
+    try {
+      // Fetch trees from the backend API
+      const trees = await FarmMappingService.fetchTrees();
+      setTrees(trees);
+      console.log("Fetched trees from API");
+    } catch (error) {
+      console.error('Error fetching trees:', error);
+      Alert.alert('Error', 'Failed to load farm mapping data');
+      // Fallback to initial data for development purposes
+      setTrees(initialTrees);
+    }
+  };  const fetchTreeHistory = async (treeId: string | number) => {
+    try {
+      // Fetch tree history from the backend API
+      const history = await FarmMappingService.fetchTreeHistory(treeId);
+      setTreeHistory(history);
+    } catch (error) {
+      console.error('Error fetching tree history:', error);
+      Alert.alert('Error', 'Failed to load tree history');
+      
+      // Fallback to mock history for development purposes
+      const mockHistory: TreeHistory[] = [
+        { 
+          id: 1, 
+          treeId, 
+          status: 'healthy', 
+          description: 'Planted', 
+          timestamp: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString() 
+        },
+        { 
+          id: 2, 
+          treeId, 
+          status: selectedTree?.status === 'sick' ? 'healthy' : 'sick', 
+          description: selectedTree?.status === 'sick' ? 'Started showing symptoms' : 'Treated with fungicide', 
+          timestamp: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() 
+        },
+        { 
+          id: 3, 
+          treeId, 
+          status: selectedTree?.status || 'healthy', 
+          description: selectedTree?.description || '', 
+          timestamp: new Date().toISOString() 
+        }
+      ];
+      setTreeHistory(mockHistory);
+    }
+  };
+  const handleTreePress = (tree: Tree) => {
+    setSelectedTree(tree);
+    setIsHealthy(tree.status === 'healthy');
+    setNewDescription(tree.description);
+    setModalVisible(true);
+    fetchTreeHistory(tree.id || tree._id || '');
+  };
+
+  const handleGraphPress = (event: any) => {
+    if (addMode) {
+      // Get coordinates relative to the graph
+      const { locationX, locationY } = event.nativeEvent;
+      setNewTreeCoords({ x: locationX, y: locationY });
+      setModalVisible(true);
+      setSelectedTree(null);
+      setNewDescription('');
+      setIsHealthy(true);
+    }
+  };
+  const handleAddTree = async () => {
+    try {
+      const newTree: Tree = {
+        id: Date.now(), // Use a timestamp as a simple unique ID
+        x: newTreeCoords.x,
+        y: newTreeCoords.y,
+        status: isHealthy ? 'healthy' : 'sick',
+        description: newDescription,
+        timestamp: new Date().toISOString()
+      };
+
+      // Save to the backend API
+      const savedTree = await FarmMappingService.addTree(newTree);
+      
+      // Update local state with the saved tree from the API
+      setTrees([...trees, savedTree || newTree]);
+      setModalVisible(false);
+      setAddMode(false);
+      
+      Alert.alert('Success', 'New tree added successfully');
+    } catch (error) {
+      console.error('Error adding tree:', error);
+      Alert.alert('Error', 'Failed to add new tree');
+    }
+  };
+
+  const handleUpdateTree = async () => {
+    try {
+      if (!selectedTree) return;
+      
+      const treeId = selectedTree._id || selectedTree.id;
+      if (!treeId) {
+        Alert.alert('Error', 'Tree ID is missing');
+        return;
+      }
+      
+      const updatedTreeData: Partial<Tree> = {
+        status: isHealthy ? 'healthy' : 'sick',
+        description: newDescription,
+        timestamp: new Date().toISOString()
+      };
+
+      // Update on the backend API
+      let updatedTree: Tree | null = null;
+      try {
+        updatedTree = await FarmMappingService.updateTree(treeId, updatedTreeData);
+      } catch (error) {
+        console.error('Error updating tree on API:', error);
+      }
+      
+      // Update the local state
+      const updatedTrees = trees.map(tree => 
+        (tree._id === treeId || tree.id === treeId) 
+          ? (updatedTree || { ...tree, ...updatedTreeData }) 
+          : tree
+      );
+      
+      setTrees(updatedTrees as Tree[]);
+      setModalVisible(false);
+      
+      Alert.alert('Success', 'Tree updated successfully');
+    } catch (error) {
+      console.error('Error updating tree:', error);
+      Alert.alert('Error', 'Failed to update tree');
+    }
+  };
+  const handleDeleteTree = async () => {
+    try {
+      if (!selectedTree) return;
+      
+      const treeId = selectedTree._id || selectedTree.id;
+      if (!treeId) {
+        Alert.alert('Error', 'Tree ID is missing');
+        return;
+      }
+      
+      // Confirm before deleting
+      Alert.alert(
+        'Confirm Deletion',
+        'Are you sure you want to delete this tree?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Delete',
+            onPress: async () => {
+              try {
+                // Delete from the backend API
+                await FarmMappingService.deleteTree(treeId);
+                
+                // Update the local state
+                const filteredTrees = trees.filter(tree => 
+                  tree._id !== treeId && tree.id !== treeId
+                );
+                setTrees(filteredTrees);
+                setModalVisible(false);
+                
+                Alert.alert('Success', 'Tree deleted successfully');
+              } catch (error) {
+                console.error('Error deleting tree:', error);
+                Alert.alert('Error', 'Failed to delete tree');
+              }
+            },
+            style: 'destructive',
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error in delete operation:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  const handleViewHistory = () => {
+    setHistoryModalVisible(true);
+  };
+  const formatDate = (dateString: string) => {
+    const options: Intl.DateTimeFormatOptions = { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#2e8b57" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Farm Mapping</Text>
+        <TouchableOpacity 
+          onPress={() => setAddMode(!addMode)}
+          style={[styles.addButton, addMode && styles.addButtonActive]}
+        >
+          <Ionicons name={addMode ? "close" : "add"} size={24} color={addMode ? "#fff" : "#2e8b57"} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoBar}>
+        <Text style={styles.infoText}>
+          {addMode 
+            ? 'Tap on the map to add a new tree' 
+            : 'Tap on a tree to view or update its status'}
+        </Text>
+      </View>
+
+      <View style={styles.legendContainer}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#28a745' }]} />
+          <Text style={styles.legendText}>Healthy Trees</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: '#dc3545' }]} />
+          <Text style={styles.legendText}>Sick Trees</Text>
+        </View>
+      </View>
+
+      <View 
+        style={styles.graphContainer}
+        ref={graphRef}
+        onTouchEnd={handleGraphPress}
+      >
+        <Svg height="100%" width="100%">
+          {/* Grid lines for reference */}
+          {Array.from({ length: 11 }).map((_, i) => (
+            <Line
+              key={`horizontal-${i}`}
+              x1="0"
+              y1={i * 40}
+              x2="100%"
+              y2={i * 40}
+              stroke="#eee"
+              strokeWidth="1"
+            />
+          ))}
+          {Array.from({ length: 11 }).map((_, i) => (
+            <Line
+              key={`vertical-${i}`}
+              x1={i * 40}
+              y1="0"
+              x2={i * 40}
+              y2="100%"
+              stroke="#eee"
+              strokeWidth="1"
+            />
+          ))}          {/* Trees */}
+          {trees.map((tree) => (
+            <React.Fragment key={tree._id || tree.id}>
+              <Circle
+                cx={tree.x}
+                cy={tree.y}
+                r={15}
+                fill={tree.status === 'healthy' ? '#28a745' : '#dc3545'}
+                onPress={() => handleTreePress(tree)}
+              />
+              <SvgText
+                x={tree.x}
+                y={tree.y + 5}
+                textAnchor="middle"
+                fill="white"
+                fontSize="12"
+                fontWeight="bold"
+              >
+                {tree._id ? tree._id.toString().slice(-3) : tree.id}
+              </SvgText>
+            </React.Fragment>
+          ))}
+        </Svg>
+      </View>
+
+      {/* Tree details modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => {
+          setModalVisible(false);
+          if (addMode) setAddMode(false);
+        }}
+      >
+        <View style={styles.centeredView}>
+          <View style={styles.modalView}>
+            <Text style={styles.modalTitle}>
+              {selectedTree ? `Tree #${selectedTree.id}` : 'Add New Tree'}
+            </Text>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Status:</Text>
+              <View style={styles.switchContainer}>
+                <Text style={[styles.switchLabel, !isHealthy && styles.activeLabel]}>Sick</Text>
+                <Switch
+                  trackColor={{ false: '#ffcccb', true: '#c8e6c9' }}
+                  thumbColor={isHealthy ? '#28a745' : '#dc3545'}
+                  ios_backgroundColor="#ffcccb"
+                  onValueChange={setIsHealthy}
+                  value={isHealthy}
+                />
+                <Text style={[styles.switchLabel, isHealthy && styles.activeLabel]}>Healthy</Text>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Description:</Text>
+              <TextInput
+                style={styles.input}
+                value={newDescription}
+                onChangeText={setNewDescription}
+                placeholder="Enter tree description or notes"
+                multiline
+              />
+            </View>
+
+            {selectedTree && (
+              <TouchableOpacity 
+                style={styles.historyButton}
+                onPress={handleViewHistory}
+              >
+                <Ionicons name="time-outline" size={18} color="#2e8b57" />
+                <Text style={styles.historyButtonText}>View History</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => {
+                  setModalVisible(false);
+                  if (addMode) setAddMode(false);
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              {selectedTree ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.button, styles.deleteButton]}
+                    onPress={handleDeleteTree}
+                  >
+                    <Text style={styles.buttonText}>Delete</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.saveButton]}
+                    onPress={handleUpdateTree}
+                  >
+                    <Text style={styles.buttonText}>Update</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.button, styles.saveButton]}
+                  onPress={handleAddTree}
+                >
+                  <Text style={styles.buttonText}>Add Tree</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Tree history modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={historyModalVisible}
+        onRequestClose={() => setHistoryModalVisible(false)}
+      >
+        <View style={styles.centeredView}>
+          <View style={styles.modalView}>
+            <Text style={styles.modalTitle}>Tree History</Text>
+            
+            <ScrollView style={styles.historyScrollView}>
+              {treeHistory.map((entry, index) => (
+                <View key={index} style={styles.historyItem}>
+                  <View style={styles.historyHeader}>
+                    <View style={[
+                      styles.statusDot, 
+                      { backgroundColor: entry.status === 'healthy' ? '#28a745' : '#dc3545' }
+                    ]} />
+                    <Text style={styles.historyDate}>{formatDate(entry.timestamp)}</Text>
+                  </View>
+                  <Text style={styles.historyStatus}>
+                    Status: {entry.status === 'healthy' ? 'Healthy' : 'Sick'}
+                  </Text>
+                  <Text style={styles.historyDescription}>{entry.description}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            
+            <TouchableOpacity
+              style={[styles.button, styles.closeButton]}
+              onPress={() => setHistoryModalVisible(false)}
+            >
+              <Text style={styles.buttonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f7f9fc",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 20,
+    backgroundColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  backButton: {
+    padding: 5,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#2e8b57",
+  },
+  addButton: {
+    padding: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2e8b57',
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonActive: {
+    backgroundColor: '#2e8b57',
+    borderColor: '#2e8b57',
+  },
+  infoBar: {
+    backgroundColor: '#e8f5e9',
+    padding: 10,
+    alignItems: 'center',
+  },
+  infoText: {
+    color: '#2e8b57',
+    fontWeight: '500',
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    padding: 10,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 10,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 5,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  graphContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+    margin: 15,
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalView: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15,
+    color: '#2e8b57',
+    textAlign: 'center',
+  },
+  formGroup: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 16,
+    marginBottom: 5,
+    color: '#333',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
+  },
+  switchLabel: {
+    marginHorizontal: 10,
+    fontSize: 16,
+    color: '#666',
+  },
+  activeLabel: {
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  button: {
+    borderRadius: 8,
+    padding: 12,
+    elevation: 2,
+    minWidth: '30%',
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: "#2e8b57",
+  },
+  deleteButton: {
+    backgroundColor: "#dc3545",
+  },
+  cancelButton: {
+    backgroundColor: "#6c757d",
+  },
+  closeButton: {
+    backgroundColor: "#6c757d",
+    marginTop: 15,
+  },
+  buttonText: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#2e8b57',
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  historyButtonText: {
+    color: '#2e8b57',
+    marginLeft: 5,
+    fontWeight: '500',
+  },
+  historyScrollView: {
+    maxHeight: 300,
+  },
+  historyItem: {
+    backgroundColor: '#f5f5f5',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  historyDate: {
+    fontSize: 12,
+    color: '#666',
+  },
+  historyStatus: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 5,
+  },
+  historyDescription: {
+    fontSize: 14,
+    color: '#333',
+  },
+});
